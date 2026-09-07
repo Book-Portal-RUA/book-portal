@@ -29,7 +29,7 @@ export default function FacultyRail({
     <>
       {/* Phone and tablet: one scrolling row. -mx-4 lets it bleed to the screen
           edge so the last chip does not look cut off mid-word. */}
-      <div className="-mx-4 overflow-x-auto px-4 pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-4 overflow-x-auto px-4 pb-1 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex w-max gap-2">
           <Chip href={allHref} label="All" count={total} active={!activeId} />
           {used.map((f) => (
@@ -46,7 +46,7 @@ export default function FacultyRail({
       </div>
 
       {/* Desktop: the rail. */}
-      <div className="hidden lg:sticky lg:top-24 lg:block">
+      <div className="hidden md:sticky md:top-24 md:block">
         <p className="eyebrow mb-3">Faculty</p>
 
         <ul className="-mx-2.5 space-y-0.5">

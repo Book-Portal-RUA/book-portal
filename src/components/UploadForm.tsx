@@ -250,7 +250,7 @@ export default function UploadForm({
 
       <UploadToasts toasts={toasts} onDone={dismiss} />
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-14">
+      <div className="grid gap-10 md:grid-cols-[minmax(0,340px)_minmax(0,1fr)] md:gap-14">
         {/* Left: the plate, which doubles as the drop target */}
         <div>
           <p className="eyebrow mb-3">Page one</p>

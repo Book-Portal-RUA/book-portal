@@ -11,7 +11,11 @@ import { moveAndRenameFile } from "@/lib/drive";
  */
 type PrismaTransaction = {
   book: {
-    count: (args: { where: { facultyFolderId: string } }) => Promise<number>;
+    findFirst: (args: {
+      where: { facultyFolderId: string };
+      orderBy: { sequenceNumber: "desc" };
+      select: { sequenceNumber: true };
+    }) => Promise<{ sequenceNumber: number | null } | null>;
     update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>;
     findMany: (args: {
       where: { facultyFolderId: string; sequenceNumber: { gt: number } };
@@ -75,7 +79,12 @@ export async function claimSequenceNumber(
     try {
       return await prisma.$transaction(
         async (tx: PrismaTransaction) => {
-          const sequenceNumber = (await tx.book.count({ where: { facultyFolderId } })) + 1;
+          const highest = await tx.book.findFirst({
+            where: { facultyFolderId },
+            orderBy: { sequenceNumber: "desc" },
+            select: { sequenceNumber: true },
+          });
+          const sequenceNumber = (highest?.sequenceNumber ?? 0) + 1;
           await apply(tx, sequenceNumber);
           return sequenceNumber;
         },

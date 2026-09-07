@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
  * rua.edu.kh/faculties.
  */
 const FACULTIES: { code: string; name: string }[] = [
-  { code: "AGR", name: "Faculty of Agronomy" },
+  { code: "AGR", name: "Faculty of Agricultural Sciences" },
   { code: "ANS", name: "Faculty of Animal Science" },
   { code: "VM", name: "Faculty of Veterinary Medicine" },
   { code: "DVM", name: "Department of Veterinary Medicine" },
@@ -23,6 +23,7 @@ const FACULTIES: { code: string; name: string }[] = [
   { code: "LMA", name: "Faculty of Land Management and Land Administration" },
   { code: "MS", name: "Graduate School (Master's)" },
   { code: "PHD", name: "Graduate School (PhD)" },
+  { code: "REP", name: "Faculty of Agricultural and Science" }
 ];
 
 /**

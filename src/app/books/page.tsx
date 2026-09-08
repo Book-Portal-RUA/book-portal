@@ -51,7 +51,14 @@ export default async function CataloguePage({
       include: { faculty: true },
       omit: { thumbnail: true },
       orderBy: { createdAt: "desc" },
-      take: 120,
+      // A fixed cap rather than real pagination - fine while the catalogue
+      // is in the hundreds, but the first thing to revisit if it grows into
+      // the thousands. This was 120, which silently truncated the list well
+      // under the catalogue's actual size (357 at last count): invisible on
+      // the unfiltered view since it never showed a count, but visible as
+      // soon as a filter - like "added in Sep-2026" - legitimately matched
+      // more than 120 books at once.
+      take: 2000,
     }),
   ]);
 

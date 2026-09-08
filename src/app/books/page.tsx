@@ -155,7 +155,7 @@ export default async function CataloguePage({
           )}
         </header>
 
-        <div className="mt-6 grid gap-6 sm:mt-9 md:grid-cols-[minmax(0,208px)_minmax(0,1fr)] md:gap-12">
+        <div className="mt-6 grid gap-6 sm:mt-9 lg:grid-cols-[minmax(0,208px)_minmax(0,1fr)] lg:gap-12">
           <aside className="min-w-0">
             <FacultyRail
               faculties={rail}

@@ -1,21 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { monthEnd } from "@/lib/date";
 
 /**
  * Export button with an optional date range.
  *
  * Closed, it is a one-click export of whatever the catalogue is currently
- * filtered to. Open, it adds a from/to range on top of that filter. The two
- * combine, so "Agronomy, added in May" is one export rather than a spreadsheet
- * edit afterwards.
+ * filtered to - including the day or month set in DateFilter, translated to
+ * the from/to range the export endpoint already understands. Open, it adds
+ * a custom from/to range on top of that filter instead. The two combine, so
+ * "Agronomy, added in May" is one export rather than a spreadsheet edit
+ * afterwards.
  */
 export default function ExportCsv({
   facultyId,
   query,
+  date,
+  month,
 }: {
   facultyId?: string;
   query?: string;
+  date?: string;
+  month?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
@@ -47,6 +54,16 @@ export default function ExportCsv({
     if (withRange) {
       if (from) params.set("from", from);
       if (to) params.set("to", to);
+    } else if (date) {
+      // A single day is a range of one.
+      params.set("from", date);
+      params.set("to", date);
+    } else if (month) {
+      const end = monthEnd(month);
+      if (end) {
+        params.set("from", `${month}-01`);
+        params.set("to", end);
+      }
     }
     const qs = params.toString();
     return `/api/books/export${qs ? `?${qs}` : ""}`;

@@ -12,15 +12,26 @@ export default function FacultyRail({
   total,
   activeId,
   query,
+  date,
+  month,
 }: {
   faculties: RailFaculty[];
   total: number;
   activeId?: string;
   query?: string;
+  date?: string;
+  month?: string;
 }) {
-  const suffix = query ? `&q=${encodeURIComponent(query)}` : "";
+  // Every link below carries whatever the date filter is currently set to,
+  // so switching faculty never silently drops it. An exact day and a month
+  // are mutually exclusive (see DateFilter), so only one is ever forwarded.
+  const extra = new URLSearchParams();
+  if (query) extra.set("q", query);
+  if (date) extra.set("date", date);
+  else if (month) extra.set("month", month);
+  const suffix = extra.toString() ? `&${extra.toString()}` : "";
   const href = (id: string) => `/books?faculty=${id}${suffix}`;
-  const allHref = query ? `/books?q=${encodeURIComponent(query)}` : "/books";
+  const allHref = extra.toString() ? `/books?${extra.toString()}` : "/books";
 
   const used = faculties.filter((f) => f.count > 0 || f.id === activeId);
   const empty = faculties.filter((f) => f.count === 0 && f.id !== activeId);

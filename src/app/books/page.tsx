@@ -5,17 +5,30 @@ import Nav from "@/components/Nav";
 import BookCard, { type CardBook } from "@/components/BookCard";
 import FacultyRail, { type RailFaculty } from "@/components/FacultyRail";
 import ExportCsv from "@/components/ExportCsv";
+import DateFilter from "@/components/DateFilter";
+import { parseExactDate, parseMonth, formatDay, formatMonth } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
 export default async function CataloguePage({
   searchParams,
 }: {
-  searchParams: Promise<{ faculty?: string; q?: string }>;
+  searchParams: Promise<{ faculty?: string; q?: string; date?: string; month?: string }>;
 }) {
   const session = await auth();
-  const { faculty: facultyId, q } = await searchParams;
+  const { faculty: facultyId, q, date: dateParam, month: monthParam } = await searchParams;
   const query = q?.trim();
+
+  // An exact day wins over a month if a hand-edited URL somehow has both -
+  // it's the more specific filter. `active*` only ever holds a value that
+  // parsed successfully, so a malformed param is dropped everywhere it
+  // would otherwise be echoed back: the summary line, the "Clear" link's
+  // scope, and every link FacultyRail/DateFilter/ExportCsv build.
+  const dateRange = parseExactDate(dateParam);
+  const monthRange = dateRange ? null : parseMonth(monthParam);
+  const whenRange = dateRange ?? monthRange;
+  const activeDate = dateRange ? dateParam : undefined;
+  const activeMonth = monthRange ? monthParam : undefined;
 
   const [faculties, counts, books] = await Promise.all([
     prisma.faculty.findMany({ orderBy: { name: "asc" } }),
@@ -33,11 +46,19 @@ export default async function CataloguePage({
         ...(query
           ? { OR: [{ title: { contains: query } }, { author: { contains: query } }] }
           : {}),
+        ...(whenRange ? { createdAt: { gte: whenRange.gte, lt: whenRange.lt } } : {}),
       },
       include: { faculty: true },
       omit: { thumbnail: true },
       orderBy: { createdAt: "desc" },
-      take: 120,
+      // A fixed cap rather than real pagination - fine while the catalogue
+      // is in the hundreds, but the first thing to revisit if it grows into
+      // the thousands. This was 120, which silently truncated the list well
+      // under the catalogue's actual size (357 at last count): invisible on
+      // the unfiltered view since it never showed a count, but visible as
+      // soon as a filter - like "added in Sep-2026" - legitimately matched
+      // more than 120 books at once.
+      take: 2000,
     }),
   ]);
 
@@ -68,6 +89,10 @@ export default async function CataloguePage({
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <form className="flex flex-1 gap-2 sm:flex-none" action="/books">
               {facultyId && <input type="hidden" name="faculty" value={facultyId} />}
+              {activeDate && <input type="hidden" name="date" value={activeDate} />}
+              {!activeDate && activeMonth && (
+                <input type="hidden" name="month" value={activeMonth} />
+              )}
               <div className="relative flex-1 sm:w-72 sm:flex-none">
                 <svg
                   viewBox="0 0 24 24"
@@ -93,7 +118,21 @@ export default async function CataloguePage({
               </button>
             </form>
 
-            {books.length > 0 && <ExportCsv facultyId={facultyId} query={query} />}
+            <DateFilter
+              facultyId={facultyId}
+              query={query}
+              date={activeDate}
+              month={activeMonth}
+            />
+
+            {books.length > 0 && (
+              <ExportCsv
+                facultyId={facultyId}
+                query={query}
+                date={activeDate}
+                month={activeMonth}
+              />
+            )}
 
             {/* Pushed to the end so the primary action sits where the eye
                 lands last on a toolbar it reads left to right. */}
@@ -104,12 +143,14 @@ export default async function CataloguePage({
             )}
           </div>
 
-          {(query || current) && (
+          {(query || current || activeDate || activeMonth) && (
             <p className="accession mt-4">
               {books.length} {books.length === 1 ? "book" : "books"}
               {query && ` matching “${query}”`}
               {current && ` in ${current.name}`}
-              {(query || current) && (
+              {activeDate && ` added on ${formatDay(activeDate)}`}
+              {!activeDate && activeMonth && ` added in ${formatMonth(activeMonth)}`}
+              {(query || current || activeDate || activeMonth) && (
                 <>
                   {" · "}
                   <Link href="/books" className="hover:text-signal">
@@ -128,6 +169,8 @@ export default async function CataloguePage({
               total={total}
               activeId={facultyId}
               query={query}
+              date={activeDate}
+              month={activeMonth}
             />
           </aside>
 
@@ -137,14 +180,20 @@ export default async function CataloguePage({
                 <p className="font-display text-xl">Nothing here yet</p>
                 <p className="mx-auto mt-2 max-w-[42ch] text-sm leading-relaxed text-ink-soft">
                   {query
-                    ? "No book matches that search. Try fewer words, or clear the faculty filter."
-                    : "This faculty has no books yet."}
+                    ? "No book matches that search. Try fewer words, or clear a filter."
+                    : activeDate || activeMonth
+                      ? "No book was added in that window. Try a wider date, or clear the filter."
+                      : "This faculty has no books yet."}
                 </p>
-                {canUpload(session?.user.role) && (
-                  <Link href="/upload" className="btn btn-primary mt-6">
-                    Add the first one
-                  </Link>
-                )}
+                {canUpload(session?.user.role) &&
+                  !query &&
+                  !current &&
+                  !activeDate &&
+                  !activeMonth && (
+                    <Link href="/upload" className="btn btn-primary mt-6">
+                      Add the first one
+                    </Link>
+                  )}
               </div>
             ) : (
               <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:gap-x-5 sm:gap-y-9 md:grid-cols-3 xl:grid-cols-4">

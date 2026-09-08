@@ -64,7 +64,15 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   // Legacy books (no facultyFolderId/sequenceNumber) were never part of the
   // sequence, so there is nothing to close.
   if (book.facultyFolderId && book.sequenceNumber != null) {
-    await closeSequenceGap(drive, book.facultyFolderId, book.sequenceNumber);
+    try {
+      await closeSequenceGap(drive, book.facultyFolderId, book.sequenceNumber);
+    } catch (err) {
+      console.error(
+        `[delete] could not close the gap in ${book.facultyFolderId} at ${book.sequenceNumber} ` +
+          `after deleting book ${id} - the delete itself succeeded`,
+        err,
+      );
+    }
   }
 
   return NextResponse.json({ removed: id });
@@ -262,7 +270,15 @@ export async function PATCH(req: Request, { params }: Ctx) {
     });
 
     if (wasSequenced) {
-      await closeSequenceGap(drive, oldFacultyFolderId!, oldSequenceNumber!);
+      try {
+        await closeSequenceGap(drive, oldFacultyFolderId!, oldSequenceNumber!);
+      } catch (err) {
+        console.error(
+          `[edit] could not close the gap in ${oldFacultyFolderId} at ${oldSequenceNumber} ` +
+            `after moving book ${book.id} - the move itself succeeded`,
+          err,
+        );
+      }
     }
 
     return NextResponse.json({ book: updated });

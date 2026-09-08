@@ -126,6 +126,19 @@ function isTransient(err: unknown): boolean {
   return err.message === "fetch failed";
 }
 
+/**
+ * True for a 429 from Gemini: the request was fine, but this model's quota
+ * (per-minute or per-day) is used up. Kept separate from isTransient
+ * because the two need different responses - backing off half a second and
+ * hitting the *same* model again does nothing for a quota cap, so this
+ * skips the same-model retry loop entirely and goes straight to the
+ * fallback model in extractCoverFieldsResilient, which draws from its own
+ * quota and may well succeed immediately.
+ */
+function isQuotaExceeded(err: unknown): boolean {
+  return err instanceof Error && /^Gemini returned 429:/.test(err.message);
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -148,7 +161,9 @@ async function withRetries(
 
 /**
  * Reads a cover, retrying transient failures on the configured model before
- * giving the lighter GEMINI_FALLBACK_MODEL one attempt of its own. This is
+ * giving the lighter GEMINI_FALLBACK_MODEL one attempt of its own. A 429
+ * skips the same-model retries (they wouldn't help - see isQuotaExceeded)
+ * and goes straight to the fallback, which has its own quota pool. This is
  * what the upload route should call - extractCoverFields itself stays a
  * single, unretried attempt, since the fallback needs to name its own model
  * rather than inherit whichever one just failed.
@@ -162,10 +177,12 @@ export async function extractCoverFieldsResilient(opts: {
     return await withRetries(opts, primaryModel);
   } catch (err) {
     const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash-lite";
-    if (err instanceof NoExtractorError || !isTransient(err) || fallbackModel === primaryModel) {
+    const quotaExceeded = isQuotaExceeded(err);
+    if (err instanceof NoExtractorError || (!isTransient(err) && !quotaExceeded) || fallbackModel === primaryModel) {
       throw err;
     }
-    console.error(`[extract] ${primaryModel} exhausted its retries, trying ${fallbackModel}`, err);
+    const reason = quotaExceeded ? "is over quota" : "exhausted its retries";
+    console.error(`[extract] ${primaryModel} ${reason}, trying ${fallbackModel}`, err);
     return await withRetries(opts, fallbackModel);
   }
 }

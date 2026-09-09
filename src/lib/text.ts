@@ -5,6 +5,16 @@ const MINOR = new Set([
   "with", "within",
 ]);
 
+/** First letters of a title, for a book whose cover failed to render. */
+export function monogram(title: string) {
+  return title
+    .split(/\s+/)
+    .filter((w) => /[a-z\u1780-\u17ff]/i.test(w))
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 /**
  * Turns a block-capitals title into title case, and leaves anything else alone.
  *

@@ -1,10 +1,17 @@
 import Link from "next/link";
-import { auth, canUpload, canAdmin, signOut } from "@/auth";
+import { auth, canUpload, canAdmin, canDelete, signOut } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import NavLinks from "./NavLinks";
 
 export default async function Nav() {
   const session = await auth();
   if (!session) return null;
+
+  // Only an admin sees the link at all, so only an admin's page load pays
+  // for this query.
+  const trashCount = canDelete(session.user.role)
+    ? await prisma.book.count({ where: { deletedAt: { not: null } } }).catch(() => 0)
+    : 0;
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md">
@@ -24,6 +31,8 @@ export default async function Nav() {
         <NavLinks
           canUpload={canUpload(session.user.role)}
           canAdmin={canAdmin(session.user.role)}
+          canDelete={canDelete(session.user.role)}
+          trashCount={trashCount}
         />
 
         <div className="flex shrink-0 items-center gap-3">

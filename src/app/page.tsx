@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LandingPage() {
   const [books, faculties] = await Promise.all([
-    prisma.book.count({ where: { status: "READY" } }).catch(() => 0),
+    prisma.book.count({ where: { status: "READY", deletedAt: null } }).catch(() => 0),
     prisma.faculty.count().catch(() => 0),
   ]);
 

@@ -36,7 +36,7 @@ export default async function BookPage({ params }: { params: Promise<{ id: strin
     prisma.faculty.findMany({ orderBy: { name: "asc" } }),
   ]);
 
-  if (!book || book.status !== "READY" || !book.driveFileId) notFound();
+  if (!book || book.status !== "READY" || book.deletedAt || !book.driveFileId) notFound();
 
   const title = titleCase(book.title);
   const isOwner = book.uploadedById === session.user.id;

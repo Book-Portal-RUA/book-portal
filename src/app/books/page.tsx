@@ -34,12 +34,13 @@ export default async function CataloguePage({
     prisma.faculty.findMany({ orderBy: { name: "asc" } }),
     prisma.book.groupBy({
       by: ["facultyId"],
-      where: { status: "READY" },
+      where: { status: "READY", deletedAt: null },
       _count: { _all: true },
     }),
     prisma.book.findMany({
       where: {
         status: "READY",
+        deletedAt: null,
         ...(facultyId ? { facultyId } : {}),
         // MySQL's default collation is case-insensitive, so `contains` needs no
         // mode flag - and Prisma rejects `mode` on MySQL anyway.

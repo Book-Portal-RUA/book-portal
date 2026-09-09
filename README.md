@@ -117,9 +117,11 @@ flow — that would reintroduce the warning for everyone.
 
 Before writing a new `Book` row, the API checks for an existing row with the
 same `title` + `author` (case-insensitive — MySQL's default collation) **but
-only among rows with `status = READY`**. PENDING and FAILED rows are ignored
-deliberately, so a retry after a broken upload is never blocked by its own
-failed attempt.
+only among rows with `status = READY` and `deletedAt = null`**. PENDING and
+FAILED rows are ignored deliberately, so a retry after a broken upload is
+never blocked by its own failed attempt — and a book currently sitting in
+Trash (3.8) is ignored too, so re-adding it isn't blocked by the copy that's
+about to auto-purge anyway.
 
 ### 3.6 Upload flow
 
@@ -153,6 +155,41 @@ Forcing the account chooser matters as much as the short expiry: without it,
 Google silently reuses whichever account is already signed in to that
 browser, making the short session pointless on its own.
 
+### 3.8 Trash: a 30-day undo window
+
+`DELETE /api/books/[id]` used to hard-delete outright — see the old §7 entry,
+now resolved. It now just stamps `Book.deletedAt`; the row, the thumbnail,
+and the `facultyFolderId`/`sequenceNumber` slot are all left exactly as they
+were, and the Drive file is moved into **Drive's own trash** (`trashed:
+true`) rather than deleted, so a link someone is still holding stops
+resolving immediately without the file actually being gone. Recovering
+(`POST /api/books/trash/recover`) just reverses both of those.
+
+`deletedAt` is a plain timestamp rather than an `ARCHIVED` status — the
+option floated in the old §7 entry — because the sweep needs an actual
+moment to measure the window from, and trash is orthogonal to the upload
+pipeline's own status. A trashed book still occupies its faculty folder's
+sequence number until it is actually gone; that is deliberate, not an
+oversight — the file is still physically in the Drive folder while trashed,
+so `claimSequenceNumber` and `closeSequenceGap` (`lib/sequence.ts`) needed no
+changes at all.
+
+**Permanent removal** — manual, via `DELETE /api/books/trash`, or automatic —
+runs the exact cascade the old hard-delete used to: Drive file gone for
+good, thumbnail gone, row gone, then `closeSequenceGap`. Both paths call the
+same `permanentlyDelete()` in `lib/trash.ts` so they can't drift apart.
+
+**The 30-day sweep** (`TRASH_RETENTION_DAYS` in `lib/trash.ts`) runs from
+`src/instrumentation.ts` — an hourly `setInterval` started once when the
+Next.js server boots, not a real cron expression and not a new Compose
+service. That is enough precision for a 30-day window, and correct for this
+deployment specifically *because* `docker-compose.yml` runs one `app`
+container with no replicas (§5) — one process owning one interval has
+nothing to double-fire against. If `app` is ever scaled beyond one replica,
+this needs to move to something that agrees on which replica runs it (an
+external cron hitting a protected route, a leader election, etc.) or the
+sweep will run once per replica.
+
 ---
 
 ## 4. File map
@@ -161,17 +198,22 @@ browser, making the short session pointless on its own.
 |---|---|
 | `src/auth.config.ts` | Edge-safe half of auth: providers, scopes, session length, domain gate. Imported by middleware — must never import Prisma or anything Node-only. |
 | `src/auth.ts` | Node-only half: the `jwt` callback that upserts `User` rows and decides/raises roles. `canUpload`, `canDelete`, `canAdmin` helpers live here. |
-| `src/lib/drive.ts` | All Drive logic: `rootFolderId`, `activeYearFolder`, `ensureFacultyFolder`, `uploadPdf`, `shareAnyoneReader`, `deleteFile`. The single source of truth for the folder hierarchy in 3.2. |
+| `src/lib/drive.ts` | All Drive logic: `rootFolderId`, `activeYearFolder`, `ensureFacultyFolder`, `uploadPdf`, `shareAnyoneReader`, `deleteFile` (permanent), `trashFile`/`untrashFile` (Drive's own trash, used by 3.8). The single source of truth for the folder hierarchy in 3.2. |
+| `src/lib/trash.ts` | Trash (3.8): `moveToTrash`, `recoverFromTrash`, `permanentlyDelete` (the shared hard-delete cascade), `purgeExpiredTrash` (the sweep), `TRASH_RETENTION_DAYS`. |
+| `src/instrumentation.ts` | Starts the hourly Trash sweep once when the server boots. See 3.8 for why an interval, not a cron dependency. |
 | `src/lib/settings.ts` | Tiny key/value helper over the `Setting` table — currently used only to store which year folder is active, so an admin can change it without a redeploy. |
 | `src/lib/extract.ts` | Gemini cover-reading: retry with backoff, falls back to a lighter model, distinguishes "feature switched off" from "model busy" from "hard failure." |
-| `src/app/api/books/route.ts` | `GET` (list/search), `POST` (upload — duplicate check, reserve row, upload, share, commit or roll back). |
-| `src/app/api/books/[id]/route.ts` | `GET` one book; `DELETE` (admin-only) — **hard-deletes** the DB row, the Drive file, and the thumbnail. No undo, no soft-delete. |
+| `src/app/api/books/route.ts` | `GET` (list/search), `POST` (upload — duplicate check, reserve row, upload, share, commit or roll back). Both exclude trashed rows. |
+| `src/app/api/books/[id]/route.ts` | `GET` one book; `PATCH` edit; `DELETE` (admin-only) — moves the book to Trash (3.8) rather than deleting it outright. |
+| `src/app/api/books/trash/route.ts` | Admin-only. `GET` lists trashed books with each one's computed purge date; `DELETE` permanently removes the given IDs now, ahead of the sweep. |
+| `src/app/api/books/trash/recover/route.ts` | Admin-only. `POST` clears `deletedAt` on the given IDs and restores their Drive sharing. |
 | `src/app/api/drive/years/route.ts` | Admin lists/sets the active year folder. |
 | `src/app/api/extract/route.ts` | HTTP wrapper around `extract.ts`; returns 501 if the feature is off, 503 if every model attempt was busy. |
+| `src/app/trash/page.tsx`, `src/components/TrashList.tsx` | The `/trash` screen (admin-only): select one or all trashed books, then Recover or Delete forever. |
 | `src/components/UploadForm.tsx` | The upload UI. Stays on page after success (3.6.8), shows toasts, keeps the faculty selection between uploads. |
 | `src/components/UploadToasts.tsx` | Success/error toast stack, auto-dismisses (errors linger longer than confirmations). |
 | `src/components/YearPicker.tsx`, `ConnectDriveButton.tsx` | Admin-only pieces of `/storage`. |
-| `src/components/Nav.tsx`, `NavLinks.tsx` | Role-gated nav — "Add a book" needs UPLOADER, "Storage" needs ADMIN. |
+| `src/components/Nav.tsx`, `NavLinks.tsx` | Role-gated nav — "Add a book" needs UPLOADER, "Storage" and "Trash" need ADMIN. Nav fetches the Trash count so the link can badge it. |
 | `prisma/schema.prisma` | **Read fresh — see §0.** Originally: `User`, `Faculty` (code = Drive folder name), `Book`, `FacultyFolder` (a resolution cache, not a source of truth), `Setting`. |
 | `prisma/seed.ts` | Faculty list with codes matching Drive folder names, in-place renames (never delete-and-recreate), admin promotion by email. |
 | `docker-entrypoint.sh` | Waits for MySQL by polling `prisma db push` itself as the readiness check (no separate `mysqladmin` client needed). **Must include `--accept-data-loss`** — see §6. |
@@ -282,7 +324,6 @@ correct direction of flow, not a limitation to route around.
 | Public internet access | **Unresolved.** `ruaportal.duckdns.org` resolves to a private LAN IP — reachable on campus Wi-Fi only, not from mobile data or off-campus. | Oracle Cloud Free Tier (card declined at signup); DigitalOcean (no free tier, $4–12/mo, only briefly tested with signup credit); Cloudflare Tunnel (**not compatible** with a DuckDNS-hosted domain without Cloudflare's $200/mo Business plan for partial CNAME setup — Tunnel needs Cloudflare to be authoritative for the zone); Tailscale Funnel (viable and free, but Tailscale's own docs frame it for personal/ephemeral use, not production); a small VPS as a WireGuard relay in front of the campus VM (viable, more moving parts). **Recommended actual fix, not yet actioned:** request `portal.rua.edu.kh` and a real public IP from RUA IT — solves the hostname, the certificate, and the reachability problem in one step, and was the plan before the DuckDNS path was taken as a faster interim. |
 | Pre-fix thumbnails | **Unconfirmed.** Files exist on disk in `/app/data/thumbnails`, and `hasThumb=1` for every row in MySQL. A `curl` test without an authenticated session correctly 307-redirected to sign-in — that only proved the route requires auth, it did not confirm whether the images actually render for a signed-in user. Verify in an actual signed-in browser tab before assuming this is either broken or fixed. |
 | Mangled characters in at least one title | **Not fixed.** At least one stored title (`Farmer's Knowledge…`) shows corrupted apostrophe bytes, visible via `mysql` CLI output. Cause not yet isolated — check `SHOW VARIABLES LIKE 'character_set%';` inside the MySQL container against the connection charset actually used by Prisma, and check whether the source PDF/OCR text was already mis-encoded before insert. |
-| Hard delete, no undo | **By design, possibly worth revisiting.** Deleting a `Book` as admin removes the MySQL row, the Drive file, and the thumbnail — all three, immediately, no trash/undo. The Drive deletion is wrapped in a swallowed error (`.catch(() => {})`) so a Drive-side failure never blocks the deletion — but that also means a failed Drive delete can leave an orphaned file in Drive with nothing in the catalogue pointing to it, invisible from the UI. A soft-delete (`ARCHIVED` status, matching the existing `BookStatus` enum pattern) was discussed as a future option, not built. |
 
 ---
 

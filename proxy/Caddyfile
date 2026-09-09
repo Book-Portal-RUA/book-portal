@@ -13,3 +13,20 @@ ruaportal.duckdns.org {
         }
     }
 }
+
+
+# Cloudflare Tunnel origin. No `tls` block on purpose: Cloudflare's edge
+# terminates the public HTTPS side of this hostname, so Caddy only ever
+# sees plain HTTP from cloudflared over localhost. The explicit http://
+# scheme is what tells Caddy not to attempt ACME here — without it Caddy
+# would try (and fail) to get a Let's Encrypt cert for a hostname whose
+# public DNS doesn't point at this box at all.
+http://ruaportal.dpdns.org {
+    reverse_proxy app:3000 {
+        header_up X-Forwarded-Proto https
+        transport http {
+            read_timeout 300s
+            write_timeout 300s
+        }
+    }
+}

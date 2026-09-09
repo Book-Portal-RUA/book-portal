@@ -30,6 +30,19 @@ const nextConfig: NextConfig = {
     },
     middlewareClientMaxBodySize: middlewareBodyLimitBytes,
   },
+  webpack: (config, { nextRuntime }) => {
+    if (nextRuntime === "edge") {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        http: false,
+        https: false,
+        net: false,
+        tls: false,
+        dns: false,
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

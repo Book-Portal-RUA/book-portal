@@ -4,7 +4,6 @@ import { auth, canDelete, canEditBook } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
   getStorageDrive,
-  deleteFile,
   ensureFacultyFolder,
   activeYearFolder,
   moveAndRenameFile,
@@ -13,7 +12,7 @@ import {
   DriveConfigError,
 } from "@/lib/drive";
 import { closeSequenceGap, claimSequenceNumber, sequencedFileName } from "@/lib/sequence";
-import { deleteThumbnail } from "@/lib/storage";
+import { moveToTrash } from "@/lib/trash";
 
 export const runtime = "nodejs";
 
@@ -29,12 +28,24 @@ export async function GET(_req: Request, { params }: Ctx) {
     include: { faculty: true },
     omit: { thumbnail: true },
   });
-  if (!book || book.status !== "READY") {
+  if (!book || book.status !== "READY" || book.deletedAt) {
     return NextResponse.json({ error: "No book with that ID." }, { status: 404 });
   }
   return NextResponse.json({ book });
 }
 
+/**
+ * DELETE /api/books/[id] - moves the book to Trash.
+ *
+ * This used to hard-delete outright (Drive file, thumbnail, row, gap-close,
+ * all in one request, no undo - see the README's former "Known open issues"
+ * entry on this). It now only stamps `deletedAt`; the Drive file is moved to
+ * Drive's own trash rather than deleted, and the DB row, thumbnail, and
+ * sequence slot are left alone so a recover is a plain undo. Permanent
+ * removal - the cascade this handler used to run - lives in
+ * /api/books/trash now, reachable manually or via the 30-day auto-purge in
+ * lib/trash.ts.
+ */
 export async function DELETE(_req: Request, { params }: Ctx) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
@@ -43,39 +54,10 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   }
 
   const { id } = await params;
-  const book = await prisma.book.findUnique({ where: { id }, omit: { thumbnail: true } });
+  const book = await moveToTrash(id);
   if (!book) return NextResponse.json({ error: "No book with that ID." }, { status: 404 });
 
-  // One client, reused for the delete itself and for the renumbering below -
-  // every file belongs to the library Drive account, so this no longer
-  // depends on the person who uploaded it still having a working token, which
-  // is what used to make removing an ex-colleague's book fail silently.
-  const drive =
-    book.driveFileId || book.facultyFolderId ? await getStorageDrive().catch(() => null) : null;
-
-  if (book.driveFileId && drive) {
-    await deleteFile(drive, book.driveFileId).catch(() => {});
-  }
-  await deleteThumbnail(book.id);
-  await prisma.book.delete({ where: { id } });
-
-  // This book's slot leaves a gap in its faculty folder's numbering - close
-  // it so a future upload's `count + 1` never collides with a real file.
-  // Legacy books (no facultyFolderId/sequenceNumber) were never part of the
-  // sequence, so there is nothing to close.
-  if (book.facultyFolderId && book.sequenceNumber != null) {
-    try {
-      await closeSequenceGap(drive, book.facultyFolderId, book.sequenceNumber);
-    } catch (err) {
-      console.error(
-        `[delete] could not close the gap in ${book.facultyFolderId} at ${book.sequenceNumber} ` +
-          `after deleting book ${id} - the delete itself succeeded`,
-        err,
-      );
-    }
-  }
-
-  return NextResponse.json({ removed: id });
+  return NextResponse.json({ trashed: id });
 }
 
 /**
@@ -115,6 +97,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
       { status: 400 },
     );
   }
+  if (book.deletedAt) {
+    return NextResponse.json(
+      { error: "This book is in Trash. Recover it before editing." },
+      { status: 400 },
+    );
+  }
 
   const parsed = editSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
@@ -128,10 +116,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const facultyChanged = facultyId !== book.facultyId;
   const authorChanged = author !== book.author;
 
-  // Same duplicate rule as upload: title+author unique among READY books,
-  // this one excepted.
+  // Same duplicate rule as upload: title+author unique among READY, non-
+  // trashed books, this one excepted.
   const duplicate = await prisma.book.findFirst({
-    where: { status: "READY", title, author, id: { not: book.id } },
+    where: { status: "READY", deletedAt: null, title, author, id: { not: book.id } },
     select: { id: true, title: true, author: true },
   });
   if (duplicate) {

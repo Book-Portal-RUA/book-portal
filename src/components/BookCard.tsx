@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { titleCase } from "@/lib/text";
+import { titleCase, monogram } from "@/lib/text";
 
 export type CardBook = {
   id: string;
@@ -10,16 +10,6 @@ export type CardBook = {
   createdAt: Date | string;
   faculty: { code: string; name: string };
 };
-
-/** First letters of the title, for books whose cover failed to render. */
-function monogram(title: string) {
-  return title
-    .split(/\s+/)
-    .filter((w) => /[a-z\u1780-\u17ff]/i.test(w))
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 export default function BookCard({ book }: { book: CardBook }) {
   // Covers are set in full capitals, which is unreadable clamped to two lines.

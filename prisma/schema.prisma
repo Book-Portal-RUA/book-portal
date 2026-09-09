@@ -101,8 +101,22 @@ model Book {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Trash. Null = live. Set = soft-deleted, recoverable until
+  // TRASH_RETENTION_DAYS (src/lib/trash.ts) after this moment, when the
+  // nightly sweep (src/instrumentation.ts) removes it the same way the old
+  // hard-delete did. Deliberately its own column rather than a BookStatus
+  // value (ARCHIVED was floated in the README at one point): status is the
+  // upload pipeline's state and trash is orthogonal to it, and the sweep
+  // needs an actual timestamp to know *when* the window closes, not just
+  // a flag. facultyFolderId/sequenceNumber/driveFileId are left alone while
+  // trashed - the file is still physically in its Drive folder (moved to
+  // Drive's own trash, not deleted - see trashFile in lib/drive.ts), so the
+  // numbering must not shift until the row is actually gone.
+  deletedAt DateTime?
+
   @@index([facultyId, status, createdAt])
   @@index([title])
+  @@index([deletedAt])
   @@unique([facultyFolderId, sequenceNumber])
 }
 

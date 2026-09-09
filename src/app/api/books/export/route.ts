@@ -53,6 +53,7 @@ export async function GET(req: Request) {
   const books = await prisma.book.findMany({
     where: {
       status: "READY",
+      deletedAt: null,
       driveFileId: { not: null },
       ...(facultyId ? { facultyId } : {}),
       ...(query

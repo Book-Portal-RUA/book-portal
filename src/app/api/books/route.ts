@@ -31,6 +31,7 @@ export async function GET(req: Request) {
   const books = await prisma.book.findMany({
     where: {
       status: "READY",
+      deletedAt: null,
       ...(facultyId ? { facultyId } : {}),
       // MySQL's default collation is case-insensitive, so `contains` needs no
       // mode flag - and Prisma rejects `mode` on MySQL anyway.
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
    * collation - so "SOTH CHANNAVY" will not slip past "Soth Channavy".
    */
   const duplicate = await prisma.book.findFirst({
-    where: { status: "READY", title, author },
+    where: { status: "READY", deletedAt: null, title, author },
     select: { id: true, title: true, author: true },
   });
   if (duplicate) {

@@ -137,6 +137,12 @@
     box-shadow: var(--shadow-sm);
   }
 
+  .btn-danger:hover:not(:disabled) {
+    background: #96201a;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
   .btn:disabled {
     opacity: 0.45;
     box-shadow: none;

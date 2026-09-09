@@ -304,9 +304,34 @@ export async function restrictDownload(drive: drive_v3.Drive, fileId: string) {
   });
 }
 
-/** Used to roll back an upload when the database write fails afterwards. */
+/** Used to roll back an upload when the database write fails afterwards, and
+ *  by the Trash sweep once a book's retention window has passed. */
 export async function deleteFile(drive: drive_v3.Drive, fileId: string) {
   await drive.files.delete({ fileId, supportsAllDrives: true });
+}
+
+/**
+ * Moves a file into Drive's own trash without deleting it - used when a book
+ * moves into this portal's Trash, so a link someone is still holding stops
+ * resolving immediately (matching what hard delete used to promise), while
+ * the file itself is still there to restore. Distinct from deleteFile, which
+ * is permanent and used only once a book's retention window actually ends.
+ */
+export async function trashFile(drive: drive_v3.Drive, fileId: string) {
+  await drive.files.update({
+    fileId,
+    requestBody: { trashed: true },
+    supportsAllDrives: true,
+  });
+}
+
+/** Reverses trashFile when a book is recovered out of this portal's Trash. */
+export async function untrashFile(drive: drive_v3.Drive, fileId: string) {
+  await drive.files.update({
+    fileId,
+    requestBody: { trashed: false },
+    supportsAllDrives: true,
+  });
 }
 
 /**

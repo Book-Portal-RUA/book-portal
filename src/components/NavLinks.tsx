@@ -10,9 +10,13 @@ import { usePathname } from "next/navigation";
 export default function NavLinks({
   canUpload,
   canAdmin,
+  canDelete,
+  trashCount,
 }: {
   canUpload: boolean;
   canAdmin: boolean;
+  canDelete: boolean;
+  trashCount: number;
 }) {
   const pathname = usePathname();
 
@@ -22,6 +26,7 @@ export default function NavLinks({
     // Storage sets the year folder for the whole library, so it is an admin
     // screen now rather than something every uploader has to visit first.
     ...(canAdmin ? [{ href: "/storage", label: "Storage" }] : []),
+    ...(canDelete ? [{ href: "/trash", label: "Trash" }] : []),
   ];
 
   return (
@@ -33,11 +38,22 @@ export default function NavLinks({
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
-            className={`shrink-0 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-2.5 ${
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-2.5 ${
               active ? "bg-tint text-signal-deep" : "text-ink-soft hover:text-ink"
             }`}
           >
             {link.label}
+            {/* Only worth a badge when there is something to recover before
+                it auto-purges - an empty Trash needs no visual weight. */}
+            {link.href === "/trash" && trashCount > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${
+                  active ? "bg-signal text-white" : "bg-husk text-ink-soft"
+                }`}
+              >
+                {trashCount}
+              </span>
+            )}
           </Link>
         );
       })}

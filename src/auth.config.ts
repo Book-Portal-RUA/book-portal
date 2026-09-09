@@ -35,6 +35,7 @@ export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 export const OWNER_SCOPES = [...BASE_SCOPES, DRIVE_SCOPE].join(" ");
 
 export const authConfig = {
+  trustHost: true,
   providers: [
     Google({
       authorization: {

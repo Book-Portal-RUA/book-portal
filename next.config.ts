@@ -39,6 +39,19 @@ const nextConfig: NextConfig = {
         net: false,
         tls: false,
         dns: false,
+        querystring: false,
+        stream: false,
+        fs: false,
+        os: false,
+        child_process: false,
+        path: false,
+        crypto: false,
+        http2: false,
+        zlib: false,
+        url: false,
+        assert: false,
+        util: false,
+        events: false,
       };
     }
     return config;

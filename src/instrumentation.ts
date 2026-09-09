@@ -18,20 +18,20 @@
  * singleton in lib/prisma.ts.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const globalForTrash = globalThis as unknown as { trashSweepInterval?: NodeJS.Timeout };
+    if (globalForTrash.trashSweepInterval) return;
 
-  const globalForTrash = globalThis as unknown as { trashSweepInterval?: NodeJS.Timeout };
-  if (globalForTrash.trashSweepInterval) return;
+    const { purgeExpiredTrash } = await import("@/lib/trash");
+    const HOUR_MS = 60 * 60 * 1000;
 
-  const { purgeExpiredTrash } = await import("@/lib/trash");
-  const HOUR_MS = 60 * 60 * 1000;
+    const sweep = () => {
+      purgeExpiredTrash().catch((err) => console.error("[trash] auto-purge sweep failed", err));
+    };
 
-  const sweep = () => {
-    purgeExpiredTrash().catch((err) => console.error("[trash] auto-purge sweep failed", err));
-  };
-
-  // Delayed first run: let the DB connection settle before the first query
-  // rather than racing it at the instant the process comes up.
-  setTimeout(sweep, 30_000);
-  globalForTrash.trashSweepInterval = setInterval(sweep, HOUR_MS);
+    // Delayed first run: let the DB connection settle before the first query
+    // rather than racing it at the instant the process comes up.
+    setTimeout(sweep, 30_000);
+    globalForTrash.trashSweepInterval = setInterval(sweep, HOUR_MS);
+  }
 }

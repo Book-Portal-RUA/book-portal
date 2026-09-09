@@ -165,7 +165,7 @@ export default function TrashList({ items: initialItems }: { items: TrashItem[] 
     setError(null);
     const ids = [...selected];
     try {
-      const res = await fetch("/api/books/trash/recover", {
+      const res = await fetch("/api/trash/recover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
@@ -191,7 +191,7 @@ export default function TrashList({ items: initialItems }: { items: TrashItem[] 
     setError(null);
     const ids = [...selected];
     try {
-      const res = await fetch("/api/books/trash", {
+      const res = await fetch("/api/trash", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
